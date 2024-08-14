@@ -18,6 +18,7 @@ import argparse
 import glob
 import multiprocessing as mp
 import os
+import socket
 import time
 
 import torch
@@ -63,7 +64,7 @@ def main():
         # the typical case.
         # Please see more details at "Important Notices:" in the page below.
         # https://pytorch.org/docs/stable/elastic/run.html
-        dist.init_process_group(backend="nccl")
+        dist.init_process_group(backend="mpi")
 
         # NOTE:
         # Before PyTorch 1.8, `--local_rank` must be added into
@@ -73,9 +74,9 @@ def main():
         # "Transitioning from torch.distributed.launch to
         # torch.distributed.run" below.
         # https://pytorch.org/docs/stable/elastic/run.html#transitioning-from-torch-distributed-launch-to-torch-distributed-run
-        local_rank = int(os.environ["LOCAL_RANK"])
-        global_rank = int(os.environ["RANK"])
-        world_size = int(os.environ["WORLD_SIZE"])
+        local_rank = int(os.environ["OMPI_COMM_WORLD_LOCAL_RANK"])
+        global_rank = int(os.environ["OMPI_COMM_WORLD_RANK"])
+        world_size = int(os.environ["OMPI_COMM_WORLD_SIZE"])
     else:
         # NOTE:
         # Due to some reasons, if you need to use older API,
@@ -92,6 +93,7 @@ def main():
         )
     print(
         (
+            f"[{socket.gethostbyname(socket.gethostname())}] "
             "job information: (local_rank, global_rank, world_size) = "
             f"({local_rank}, {global_rank}, {world_size})"
         )
@@ -129,7 +131,7 @@ def main():
     # If you are interested in the acceleration by Tensor Cores,
     # please read the following doc.
     # https://pytorch.org/docs/stable/amp.html
-    scaler = torch.cuda.amp.GradScaler()
+    scaler = torch.amp.GradScaler('cuda')
 
     for epoch in range(args.num_epochs):
         if global_rank == 0:
@@ -160,7 +162,7 @@ def main():
 
             optimizer.zero_grad()
 
-            with torch.cuda.amp.autocast():
+            with torch.amp.autocast('cuda'):
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
             scaler.scale(loss).backward()
@@ -321,7 +323,7 @@ def prepare_dataset(datadir, batch_size, num_workers=8, no_validation=False):
 
 
 def build_model(n_classes):
-    model = models.resnet50(pretrained=False)
+    model = models.resnet50(weights="DEFAULT")
     n_fc_in_feats = model.fc.in_features
     model.fc = torch.nn.Sequential(
         torch.nn.Linear(n_fc_in_feats, 512), torch.nn.Linear(512, n_classes)
