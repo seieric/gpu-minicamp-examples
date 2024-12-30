@@ -64,7 +64,7 @@ def main():
         # the typical case.
         # Please see more details at "Important Notices:" in the page below.
         # https://pytorch.org/docs/stable/elastic/run.html
-        dist.init_process_group(backend="mpi")
+        #dist.init_process_group(backend="mpi")
 
         # NOTE:
         # Before PyTorch 1.8, `--local_rank` must be added into
@@ -77,6 +77,18 @@ def main():
         local_rank = int(os.environ["OMPI_COMM_WORLD_LOCAL_RANK"])
         global_rank = int(os.environ["OMPI_COMM_WORLD_RANK"])
         world_size = int(os.environ["OMPI_COMM_WORLD_SIZE"])
+
+        if args.use_nccl:
+            print("Backend: NCCL")
+            dist.init_process_group(
+                backend="nccl",
+                init_method="env://",
+                rank=global_rank,
+                world_size=world_size
+            )
+        else:
+            print("Backend: MPI")
+            dist.init_process_group(backend="mpi")
     else:
         # NOTE:
         # Due to some reasons, if you need to use older API,
@@ -375,6 +387,8 @@ def parse_args():
     parser.add_argument(
         "--logging-interval", type=int, default=10, help="logging interval"
     )
+
+    parser.add_argument("--use-nccl", action="store_true")
 
     args, unknown_args = parser.parse_known_args()
     if args.use_older_api:
